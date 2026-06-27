@@ -1,0 +1,16 @@
+package org.quartzlang.embed.http
+
+/// Sends a request; headers alternate name and value. A network failure traps.
+fn request(method: str, url: str, headers: [str], body: Bytes?) -> Response
+fn get(url: str) -> Response
+
+@handle
+struct Response {}
+
+impl Response {
+    fn status(self) -> int
+    fn text(self) -> str
+    fn bytes(self) -> Bytes
+    /// The first value of a header, or null.
+    fn header(self, name: str) -> str?
+}

@@ -1,0 +1,26 @@
+package org.quartzlang.embed.fs
+
+/// Files under the directory the host granted; paths use '/' and cannot leave it, through '..' or symbolic links.
+fn exists(path: str) -> bool
+fn isFile(path: str) -> bool
+fn isDirectory(path: str) -> bool
+/// The file's text, or null when it does not exist.
+fn readText(path: str) -> str?
+/// The file's bytes, or null when it does not exist.
+fn readBytes(path: str) -> Bytes?
+/// Creates or replaces the file, creating its parent directories.
+fn writeText(path: str, text: str)
+fn writeBytes(path: str, data: Bytes)
+fn appendText(path: str, text: str)
+/// The names in a directory, sorted; empty when it does not exist.
+fn list(path: str) -> [str]
+/// Every file under a directory, relative to it, sorted.
+fn walk(path: str) -> [str]
+fn createDirectories(path: str)
+/// Deletes a file or a directory with everything in it; false when there was nothing to delete.
+fn delete(path: str) -> bool
+fn copy(from: str, to: str)
+fn move(from: str, to: str)
+fn size(path: str) -> int
+/// Milliseconds since the epoch.
+fn modified(path: str) -> int

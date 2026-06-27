@@ -1,0 +1,11 @@
+package org.quartzlang.embed.terminal
+
+fn print(text: str)
+fn println(text: str)
+fn eprintln(text: str)
+/// A line from standard input without its line break, or null at the end of input.
+fn readLine() -> str?
+/// True when standard output is a terminal, not a pipe or a file.
+fn interactive() -> bool
+/// Columns of the terminal, 80 when unknown.
+fn width() -> int

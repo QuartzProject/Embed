@@ -1,0 +1,21 @@
+package org.quartzlang.embed.process
+
+/// The command line arguments the application passed on.
+fn args() -> [str]
+/// An environment variable, or null.
+fn env(name: str) -> str?
+/// Ends the program with an exit code; the host decides what that means.
+fn exit(code: int)
+/// Runs a program with the terminal's input and output and returns its exit code.
+fn run(command: [str], dir: str?) -> int
+/// Runs a program to the end and keeps what it printed.
+fn exec(command: [str], dir: str?) -> Exec
+
+@handle
+struct Exec {}
+
+impl Exec {
+    fn code(self) -> int
+    fn stdout(self) -> str
+    fn stderr(self) -> str
+}
