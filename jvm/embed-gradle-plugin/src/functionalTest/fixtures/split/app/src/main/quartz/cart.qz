@@ -1,0 +1,13 @@
+import com.example.shop.{price, items}
+
+pub fn total(cart: [str]) -> int {
+    var sum = 0
+    for item in cart {
+        sum += price(item)
+    }
+    return sum
+}
+
+pub fn catalog() -> [str] {
+    return items()
+}

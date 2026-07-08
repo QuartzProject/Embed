@@ -1,0 +1,29 @@
+import org.quartzlang.embed.terminal.println
+
+pub fn greet(player: Player, times: int) -> str {
+    broadcast("greeting {player.name()}")
+    let title = nickname(player) ?? "newcomer"
+    return shout("hello {player.name()} the {title} x{times}")
+}
+
+pub fn levels(players: [Player]) -> [i32] {
+    let out: [i32] = []
+    for p in players {
+        out.push(p.level())
+    }
+    return out
+}
+
+pub fn best(players: [Player]) -> Player {
+    var top = players[0]
+    for p in players {
+        if p.level() > top.level() {
+            top = p
+        }
+    }
+    return top
+}
+
+fn main() {
+    println("greeter ready")
+}
