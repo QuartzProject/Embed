@@ -1,4 +1,4 @@
-package org.quartzlang.embed;
+package org.quartzlang.embed.api;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

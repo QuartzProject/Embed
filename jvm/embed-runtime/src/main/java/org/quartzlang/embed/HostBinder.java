@@ -6,6 +6,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Map;
+import org.quartzlang.embed.api.ModuleMetadata;
+import org.quartzlang.embed.api.QuartzFunction;
 import org.quartzlang.jvm.HostCall;
 import org.quartzlang.jvm.Import;
 import org.quartzlang.jvm.Sandbox;

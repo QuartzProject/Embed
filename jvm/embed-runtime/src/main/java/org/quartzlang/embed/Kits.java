@@ -2,6 +2,7 @@ package org.quartzlang.embed;
 
 import java.nio.file.Path;
 import java.util.List;
+import org.quartzlang.embed.api.EmbedLayout;
 import org.quartzlang.embed.kits.ArchivesKit;
 import org.quartzlang.embed.kits.FileSystemKit;
 import org.quartzlang.embed.kits.HttpKit;
@@ -10,7 +11,7 @@ import org.quartzlang.embed.kits.TerminalKit;
 
 /** The kits Embed ships. Each grants one capability; a module only gets what the application passes. */
 public final class Kits {
-    public static final List<String> NAMES = List.of("fs", "terminal", "process", "http", "archives");
+    public static final List<String> NAMES = EmbedLayout.KIT_NAMES;
 
     private Kits() {}
 

@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.quartzlang.embed.api.EmbedLayout;
+import org.quartzlang.embed.api.ModuleMetadata;
 import org.quartzlang.jvm.CompileOptions;
 import org.quartzlang.jvm.Program;
 import org.quartzlang.jvm.Quartz;

@@ -1,4 +1,6 @@
-package org.quartzlang.embed;
+package org.quartzlang.embed.api;
+
+import java.util.List;
 
 /** Where the build puts compiled modules inside a jar; the Gradle plugin and the runtime share these paths. */
 public final class EmbedLayout {
@@ -8,6 +10,8 @@ public final class EmbedLayout {
     public static final String MODULES = ROOT + "/modules";
     /** Where kit interfaces live in the runtime jar. */
     public static final String KITS = "org/quartzlang/embed/kits";
+    /** Every kit Embed ships, by name. */
+    public static final List<String> KIT_NAMES = List.of("fs", "terminal", "process", "http", "archives");
 
     private EmbedLayout() {}
 

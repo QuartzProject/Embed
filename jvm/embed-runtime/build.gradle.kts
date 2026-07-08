@@ -16,17 +16,11 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
+    api(project(":embed-api"))
     api("org.quartzlang:quartz-java:${providers.gradleProperty("quartzJvmVersion").get()}")
     testImplementation(platform("org.junit:junit-bom:5.14.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-tasks.processResources {
-    from(rootProject.file("kits")) {
-        include("*.qzi")
-        into("org/quartzlang/embed/kits")
-    }
 }
 
 tasks.jar {
