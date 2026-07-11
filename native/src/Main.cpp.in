@@ -1,0 +1,18 @@
+#include "quartz/embed/Native.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <span>
+
+extern "C" const std::uint8_t @QZE_SYMBOL@[];
+extern "C" const std::size_t @QZE_SYMBOL@_size;
+
+int main(int argc, char** argv) {
+    quartz::embed::Grants grants;
+    grants.root = std::filesystem::current_path();
+    for (int i = 1; i < argc; ++i) {
+        grants.args.emplace_back(argv[i]);
+    }
+    return quartz::embed::run(std::span(@QZE_SYMBOL@, @QZE_SYMBOL@_size), grants, "@QZE_ENTRY@");
+}
