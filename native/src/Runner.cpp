@@ -32,6 +32,7 @@ const KitEntry* find(std::string_view name) {
 struct Owned {
     qz_program* program = nullptr;
     qz_sandbox* sandbox = nullptr;
+
     ~Owned() {
         if (sandbox != nullptr) {
             qz_sandbox_free(sandbox);

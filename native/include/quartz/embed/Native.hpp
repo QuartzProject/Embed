@@ -11,8 +11,8 @@ namespace quartz::embed {
 
 /// What the executable grants the embedded module; a kit it was not built with is never imported.
 struct Grants {
-    std::filesystem::path root;     // the fs kit's directory
-    std::vector<std::string> args;  // what process.args() returns
+    std::filesystem::path root;    // the fs kit's directory
+    std::vector<std::string> args; // what process.args() returns
     std::size_t memoryBytes = std::size_t{1} << 30;
     std::int64_t fuelPerCall = INT64_MAX / 4;
 };

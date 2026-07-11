@@ -30,7 +30,9 @@ bool write(std::FILE* to, const qz_slot* args, bool newline) {
 }
 
 bool print(qz_call*, const qz_slot* args, qz_slot*, Host&, std::uint32_t) { return write(stdout, args, false); }
+
 bool println(qz_call*, const qz_slot* args, qz_slot*, Host&, std::uint32_t) { return write(stdout, args, true); }
+
 bool eprintln(qz_call*, const qz_slot* args, qz_slot*, Host&, std::uint32_t) { return write(stderr, args, true); }
 
 bool readLine(qz_call* call, const qz_slot*, qz_slot* result, Host&, std::uint32_t) {
