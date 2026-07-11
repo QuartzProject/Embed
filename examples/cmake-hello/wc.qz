@@ -1,0 +1,23 @@
+import org.quartzlang.embed.fs
+import org.quartzlang.embed.terminal.{println, eprintln}
+import org.quartzlang.embed.process.{args, exit}
+
+fn main() {
+    let files = args()
+    if files.len() == 0 {
+        eprintln("usage: qwc <file>...")
+        exit(2)
+    }
+    var total = 0
+    for name in files {
+        if !fs.isFile(name) {
+            eprintln("qwc: {name}: no such file")
+            exit(1)
+        }
+        let text = fs.readText(name) ?? ""
+        let lines = text.split("\n").len() - 1
+        total += lines
+        println("{lines} {name}")
+    }
+    println("{total} total")
+}

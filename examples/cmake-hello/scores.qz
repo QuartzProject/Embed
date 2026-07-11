@@ -1,0 +1,3 @@
+pub fn score(name: str, base: int) -> int {
+    return base * 2 + bonus(name)
+}
