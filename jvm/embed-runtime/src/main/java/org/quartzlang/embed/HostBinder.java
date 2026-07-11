@@ -40,6 +40,10 @@ final class HostBinder {
     private static Object invoke(HostCall call, Method method, Object receiver, boolean self,
             java.lang.reflect.Type[] params, Signature signature, Handles handles) throws Exception {
         Object target = receiver;
+        if (target == null && !self && !Modifier.isStatic(method.getModifiers())) {
+            throw new EmbedException(method + " needs an instance of " + method.getDeclaringClass().getName()
+                    + ": pass one to QuartzEmbed.Builder.host");
+        }
         int first = 0;
         if (self) {
             target = handles.get(call.longArg(0), method.getDeclaringClass());
@@ -99,7 +103,7 @@ final class HostBinder {
         } catch (ReflectiveOperationException ignored) {
             // not a Kotlin object
         }
-        throw new EmbedException(method + " needs an instance of " + owner.getName() + ": pass one to host(...)");
+        return null;
     }
 
     static List<String> unbound(Sandbox sandbox, java.util.Set<String> bound) {
