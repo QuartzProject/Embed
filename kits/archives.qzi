@@ -1,10 +1,11 @@
 package org.quartzlang.embed.archives
 
-/// The names of the files in a zip or jar.
-fn entries(archive: str) -> [str]
-/// Extracts a zip or jar into a directory; returns how many files it wrote. An entry that would land outside traps.
-fn unzip(archive: str, target: str) -> int
+/// The names of the files in a zip or jar. Archives and targets are paths of the fs kit, inside the granted paths.
+fn entries(archive: str) -> Result<[str], str>
+/// Extracts a zip or jar into a directory; returns how many files it wrote. An entry that would land outside is an
+/// error, and nothing after it is written.
+fn unzip(archive: str, target: str) -> Result<int, str>
 /// Extracts a .tar or .tar.gz into a directory; returns how many files it wrote.
-fn untar(archive: str, target: str) -> int
+fn untar(archive: str, target: str) -> Result<int, str>
 /// Zips every file under a directory; returns how many it added.
-fn zip(directory: str, archive: str) -> int
+fn zip(directory: str, archive: str) -> Result<int, str>

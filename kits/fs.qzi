@@ -1,26 +1,27 @@
 package org.quartzlang.embed.fs
 
-/// Files under the directory the host granted; paths use '/' and cannot leave it, through '..' or symbolic links.
+/// Files under the directories the host granted. Paths use '/'; a relative path starts at the first granted directory
+/// and an absolute one must lie inside a granted path. Leaving them, through '..' or a symbolic link, is an error.
 fn exists(path: str) -> bool
 fn isFile(path: str) -> bool
 fn isDirectory(path: str) -> bool
-/// The file's text, or null when it does not exist.
-fn readText(path: str) -> str?
-/// The file's bytes, or null when it does not exist.
-fn readBytes(path: str) -> Bytes?
-/// Creates or replaces the file, creating its parent directories.
-fn writeText(path: str, text: str)
-fn writeBytes(path: str, data: Bytes)
-fn appendText(path: str, text: str)
-/// The names in a directory, sorted; empty when it does not exist.
-fn list(path: str) -> [str]
+/// The file's text; an error when it is missing, outside the granted paths or not UTF-8.
+fn readText(path: str) -> Result<str, str>
+fn readBytes(path: str) -> Result<Bytes, str>
+/// Creates or replaces the file, creating its parent directories; returns the bytes written.
+fn writeText(path: str, text: str) -> Result<int, str>
+fn writeBytes(path: str, data: Bytes) -> Result<int, str>
+fn appendText(path: str, text: str) -> Result<int, str>
+/// The names in a directory, sorted.
+fn list(path: str) -> Result<[str], str>
 /// Every file under a directory, relative to it, sorted.
-fn walk(path: str) -> [str]
-fn createDirectories(path: str)
+fn walk(path: str) -> Result<[str], str>
+/// True when it created a directory, false when it was already there.
+fn createDirectories(path: str) -> Result<bool, str>
 /// Deletes a file or a directory with everything in it; false when there was nothing to delete.
-fn delete(path: str) -> bool
-fn copy(from: str, to: str)
-fn move(from: str, to: str)
-fn size(path: str) -> int
+fn delete(path: str) -> Result<bool, str>
+fn copy(from: str, to: str) -> Result<bool, str>
+fn move(from: str, to: str) -> Result<bool, str>
+fn size(path: str) -> Result<int, str>
 /// Milliseconds since the epoch.
-fn modified(path: str) -> int
+fn modified(path: str) -> Result<int, str>

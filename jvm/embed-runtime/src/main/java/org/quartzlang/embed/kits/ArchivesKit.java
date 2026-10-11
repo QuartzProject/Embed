@@ -18,6 +18,8 @@ import java.util.zip.ZipOutputStream;
 import org.quartzlang.embed.Kit;
 import org.quartzlang.embed.KitContext;
 import org.quartzlang.embed.RootedPaths;
+import org.quartzlang.jvm.HostCall;
+import org.quartzlang.jvm.Result;
 
 /** {@code org.quartzlang.embed.archives}: zip, jar and tar archives inside one directory. */
 public final class ArchivesKit implements Kit {
@@ -35,14 +37,30 @@ public final class ArchivesKit implements Kit {
 
     @Override
     public void bind(KitContext k) {
-        k.bind(P + "entries", c -> {
+        bind(k, "entries", c -> {
             try (ZipFile zip = new ZipFile(paths.resolve(c.stringArg(0)).toFile())) {
                 return zip.stream().filter(e -> !e.isDirectory()).map(ZipEntry::getName).toList();
             }
         });
-        k.bind(P + "unzip", c -> unzip(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
-        k.bind(P + "untar", c -> untar(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
-        k.bind(P + "zip", c -> zip(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
+        bind(k, "unzip", c -> unzip(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
+        bind(k, "untar", c -> untar(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
+        bind(k, "zip", c -> zip(paths.resolve(c.stringArg(0)), paths.resolve(c.stringArg(1))));
+    }
+
+    /** One operation; what it throws becomes the error. */
+    @FunctionalInterface
+    private interface Operation {
+        Object run(HostCall call) throws IOException;
+    }
+
+    private static void bind(KitContext k, String name, Operation operation) {
+        k.bind(P + name, c -> {
+            try {
+                return Result.ok(operation.run(c));
+            } catch (IOException | SecurityException e) {
+                return Result.err(e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+        });
     }
 
     private long unzip(Path archive, Path target) throws IOException {

@@ -25,8 +25,14 @@ public final class EmbedLayout {
         return MODULES + "/" + validate(id) + ".properties";
     }
 
+    /** The kit's host interface; the {@code http} kit has none, it answers the library's {@code org.quartzlang.http}. */
     public static String kitInterfacePath(String kit) {
         return KITS + "/" + validate(kit) + ".qzi";
+    }
+
+    /** The package whose imports the kit binds. */
+    public static String kitPackage(String kit) {
+        return kit.equals("http") ? "org.quartzlang.http" : "org.quartzlang.embed." + validate(kit);
     }
 
     /** Checks that {@code id} names a resource without leaving its directory, and returns it. */

@@ -1,19 +1,22 @@
 package org.quartzlang.embed.kits;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.quartzlang.embed.Kit;
 import org.quartzlang.embed.KitContext;
-import org.quartzlang.jvm.HostCall;
+import org.quartzlang.jvm.Result;
+import org.quartzlang.jvm.Struct;
 
-/** {@code org.quartzlang.embed.http}: blocking HTTP requests. */
+/** Answers the library's {@code org.quartzlang.http.send}, which fails without a host, with Java's HTTP client. */
 public final class HttpKit implements Kit {
-    private static final String P = "org.quartzlang.embed.http.";
     private final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(30)).build();
 
@@ -24,31 +27,32 @@ public final class HttpKit implements Kit {
 
     @Override
     public void bind(KitContext k) {
-        k.bind(P + "request", c -> {
-            List<Object> headers = c.listArg(2);
-            if (headers.size() % 2 != 0) {
-                throw new IllegalArgumentException("headers alternate name and value");
-            }
-            Object body = c.arg(3);
-            HttpRequest.BodyPublisher publisher = body == null ? HttpRequest.BodyPublishers.noBody()
-                    : HttpRequest.BodyPublishers.ofByteArray((byte[]) body);
-            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(c.stringArg(1)))
-                    .method(c.stringArg(0), publisher).timeout(Duration.ofMinutes(5));
-            for (int i = 0; i < headers.size(); i += 2) {
-                request.header((String) headers.get(i), (String) headers.get(i + 1));
-            }
-            return k.handles().idOf(client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray()));
-        });
-        k.bind(P + "get", c -> k.handles().idOf(client.send(HttpRequest.newBuilder(URI.create(c.stringArg(0)))
-                .timeout(Duration.ofMinutes(5)).build(), HttpResponse.BodyHandlers.ofByteArray())));
-        k.bind("Response.status", c -> (long) response(k, c).statusCode());
-        k.bind("Response.text", c -> new String(response(k, c).body(), StandardCharsets.UTF_8));
-        k.bind("Response.bytes", c -> response(k, c).body());
-        k.bind("Response.header", c -> response(k, c).headers().firstValue(c.stringArg(1)).orElse(null));
+        k.bind("org.quartzlang.http.send", c -> send((Struct) c.arg(0)));
     }
 
-    @SuppressWarnings("unchecked")
-    private static HttpResponse<byte[]> response(KitContext k, HostCall c) {
-        return k.handles().get(c.longArg(0), HttpResponse.class);
+    private Object send(Struct request) throws InterruptedException {
+        try {
+            Object body = request.get("body");
+            HttpRequest.BodyPublisher publisher = body == null ? HttpRequest.BodyPublishers.noBody()
+                    : HttpRequest.BodyPublishers.ofByteArray((byte[]) body);
+            long timeout = ((Number) request.get("timeoutMillis")).longValue();
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create((String) request.get("url")))
+                    .method((String) request.get("method"), publisher)
+                    .timeout(Duration.ofMillis(Math.max(1, timeout)));
+            for (Object header : (List<?>) request.get("headers")) {
+                List<?> pair = (List<?>) header;
+                builder.header((String) pair.get(0), (String) pair.get(1));
+            }
+            HttpResponse<byte[]> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+            List<List<Object>> headers = new ArrayList<>();
+            response.headers().map().forEach((name, values) -> values.forEach(v -> headers.add(List.of(name, v))));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("status", (long) response.statusCode());
+            fields.put("headers", headers);
+            fields.put("body", response.body());
+            return Result.ok(Struct.of("Response", fields));
+        } catch (IOException | IllegalArgumentException e) {
+            return Result.err(e.getMessage() == null ? e.toString() : e.getMessage());
+        }
     }
 }

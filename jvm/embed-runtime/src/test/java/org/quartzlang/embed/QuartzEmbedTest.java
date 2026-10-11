@@ -1,7 +1,6 @@
 package org.quartzlang.embed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,8 +51,9 @@ class QuartzEmbedTest {
                 }
 
                 fn main() {
-                    fs.writeText("out/args.txt", "{args()}")
-                    exit(7)
+                    if fs.writeText("out/args.txt", "{args()}").isOk() {
+                        exit(7)
+                    }
                 }
                 """;
         Path classes = Files.createDirectories(dir.resolve("classes"));
@@ -90,8 +90,17 @@ class QuartzEmbedTest {
     }
 
     @Test
-    void trapsWhenCodeLeavesTheRoot(@TempDir Path dir) throws Exception {
-        String source = "import org.quartzlang.embed.fs\n\nfn main() {\n    fs.writeText(\"../escape.txt\", \"x\")\n}\n";
+    void answersAPathOutsideTheGrantedOnesWithAnError(@TempDir Path dir) throws Exception {
+        String source = """
+                import org.quartzlang.embed.fs
+
+                fn main() -> int {
+                    return match fs.writeText("../escape.txt", "x") {
+                        Ok(_) => 0
+                        Err(_) => 3
+                    }
+                }
+                """;
         Path classes = dir.resolve("classes");
         Files.createDirectories(classes.resolve(EmbedLayout.MODULES));
         try (Program program = Quartz.compile(List.of(kit("fs"), Source.of("app.qz", source)),
@@ -102,8 +111,7 @@ class QuartzEmbedTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[] {classes.toUri().toURL()})) {
             QuartzEmbed embed = QuartzEmbed.builder().classLoader(loader).grant(Kits.fileSystem(dir.resolve("root")))
                     .build();
-            QuartzScriptException trap = assertThrows(QuartzScriptException.class, () -> embed.run("esc"));
-            assertInstanceOf(SecurityException.class, trap.getCause());
+            assertEquals(3, embed.run("esc"));
         }
         assertTrue(Files.notExists(dir.resolve("escape.txt")));
     }

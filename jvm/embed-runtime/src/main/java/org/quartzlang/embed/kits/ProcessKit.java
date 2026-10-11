@@ -46,9 +46,9 @@ public final class ProcessKit implements Kit {
             String out = drain(process.getInputStream());
             return k.handles().idOf(new Exec(process.waitFor(), out, err.join()));
         });
-        k.bind("Exec.code", c -> exec(k, c).code());
-        k.bind("Exec.stdout", c -> exec(k, c).stdout());
-        k.bind("Exec.stderr", c -> exec(k, c).stderr());
+        k.bind(P + "Exec.code", c -> exec(k, c).code());
+        k.bind(P + "Exec.stdout", c -> exec(k, c).stdout());
+        k.bind(P + "Exec.stderr", c -> exec(k, c).stderr());
     }
 
     private static Exec exec(KitContext k, HostCall c) {
