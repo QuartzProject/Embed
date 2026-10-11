@@ -19,6 +19,7 @@ import org.quartzlang.embed.api.ModuleMetadata;
 import org.quartzlang.embed.api.QuartzFunction;
 import org.quartzlang.jvm.Limits;
 import org.quartzlang.jvm.Program;
+import org.quartzlang.jvm.QuartzException;
 import org.quartzlang.jvm.Sandbox;
 
 /** Loads the modules the build packaged and runs them with the kits and host objects the application grants. */
@@ -100,16 +101,16 @@ public final class QuartzEmbed {
                 HostBinder.bind(sandbox, binding, loader, hosts, handles);
                 bound.add(binding.importName());
             }
-            List<String> missing = HostBinder.unbound(sandbox, bound);
-            if (!missing.isEmpty()) {
-                throw new EmbedException("module " + id + " imports host functions nothing binds: " + missing);
+            try {
+                sandbox.start();
+            } catch (QuartzException e) {
+                throw new EmbedException("module " + id + " cannot start: " + e.getMessage(), e);
             }
-            sandbox.start();
         } catch (RuntimeException e) {
             sandbox.close();
             throw e;
         }
-        return new QuartzModule(id, program, sandbox, handles);
+        return new QuartzModule(id, program, sandbox, handles, metadata);
     }
 
     /** Runs {@code main} of module {@code id} in a fresh sandbox and returns its exit code. */

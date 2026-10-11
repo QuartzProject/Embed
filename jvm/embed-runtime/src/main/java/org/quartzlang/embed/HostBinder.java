@@ -4,7 +4,6 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.List;
 import java.util.Map;
 import org.quartzlang.embed.api.ModuleMetadata;
 import org.quartzlang.embed.api.QuartzFunction;
@@ -34,7 +33,7 @@ final class HostBinder {
                     + method + " takes " + arity);
         }
         method.setAccessible(true);
-        sandbox.bind(binding.importName(), call -> invoke(call, method, receiver, self, params, signature, handles));
+        sandbox.bind(imported.name(), call -> invoke(call, method, receiver, self, params, signature, handles));
     }
 
     private static Object invoke(HostCall call, Method method, Object receiver, boolean self,
@@ -51,7 +50,9 @@ final class HostBinder {
         }
         Object[] args = new Object[params.length];
         for (int i = 0; i < params.length; ++i) {
-            args[i] = Conversions.toJava(call.arg(i + first), signature.params().get(i + first), params[i], handles);
+            org.quartzlang.jvm.Type type = signature.params().get(i + first);
+            args[i] = Conversions.hasHandle(type) ? Conversions.toJava(call.arg(i + first), type, params[i], handles)
+                    : call.arg(i + first, params[i]);
         }
         Object result;
         try {
@@ -104,10 +105,5 @@ final class HostBinder {
             // not a Kotlin object
         }
         return null;
-    }
-
-    static List<String> unbound(Sandbox sandbox, java.util.Set<String> bound) {
-        return sandbox.program().imports().stream().filter(i -> !i.builtIn() && !bound.contains(i.name()))
-                .map(Import::name).toList();
     }
 }
