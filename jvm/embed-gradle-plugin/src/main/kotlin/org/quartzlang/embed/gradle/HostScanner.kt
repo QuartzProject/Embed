@@ -3,6 +3,7 @@ package org.quartzlang.embed.gradle
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
 import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
@@ -20,10 +21,13 @@ internal data class ScannedMethod(
     val parameterNames: List<String>,
     val nullableParameters: Set<Int>,
     val nullableResult: Boolean,
+    val property: Boolean,
+    /** `@QuartzFunction(method = true)`, or a Kotlin extension function: the first parameter is the receiver. */
+    val receiver: Boolean,
 )
 
-/** What the classes hold: annotated methods and `@QuartzHandle` classes by Quartz name. */
-internal class ScanResult {
+/** What the classes hold: annotated methods, `@QuartzHandle` classes by Quartz name, and every class by name. */
+internal class ScanResult(val classes: ClassIndex) {
     val methods = mutableListOf<ScannedMethod>()
     val handles = sortedMapOf<String, String>()
 }
@@ -35,16 +39,24 @@ internal object HostScanner {
     private val marker = "Lorg/quartzlang/embed/api/Quartz".toByteArray()
 
     fun scan(files: Iterable<File>): ScanResult {
-        val result = ScanResult()
+        val index = ClassIndex()
+        val result = ScanResult(index)
         for (file in files) {
             when {
                 file.isDirectory -> file.walkTopDown().filter { it.isFile && it.name.endsWith(".class") }.sorted()
-                    .forEach { read(it.readBytes(), result) }
+                    .forEach { f ->
+                        val bytes = f.readBytes()
+                        index.add(bytes) { bytes }
+                        read(bytes, result)
+                    }
 
                 file.isFile && (file.name.endsWith(".jar") || file.name.endsWith(".zip")) -> ZipFile(file).use { zip ->
-                    zip.stream().filter { it.name.endsWith(".class") }.forEach { entry ->
-                        read(zip.getInputStream(entry).use { it.readBytes() }, result)
-                    }
+                    zip.stream().filter { it.name.endsWith(".class") && !it.name.startsWith("META-INF/") }
+                        .forEach { entry ->
+                            val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                            index.add(entry.name.removeSuffix(".class").replace('/', '.'), bytes)
+                            read(bytes, result)
+                        }
                 }
             }
         }
@@ -68,7 +80,7 @@ internal object HostScanner {
         return false
     }
 
-    private fun isNullable(descriptor: String) = descriptor.endsWith("/Nullable;")
+    internal fun isNullable(descriptor: String) = descriptor.endsWith("/Nullable;")
 
     private class Visitor(private val result: ScanResult) : ClassVisitor(Opcodes.ASM9) {
         private lateinit var owner: String
@@ -79,36 +91,40 @@ internal object HostScanner {
 
         override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
             if (descriptor != HANDLE) return null
-            return NameVisitor { given -> result.handles[given ?: owner.substringAfterLast('.').substringAfterLast('$')] = owner }
+            return ValuesVisitor { values ->
+                val given = (values["name"] as? String)?.takeIf { it.isNotEmpty() }
+                result.handles[given ?: owner.substringAfterLast('.').substringAfterLast('$')] = owner
+            }
         }
 
         override fun visitMethod(access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<String>?): MethodVisitor {
             val isStatic = access and Opcodes.ACC_STATIC != 0
-            return MethodReader(isStatic, descriptor) { quartzName, names, nullable, nullableResult ->
-                result.methods += ScannedMethod(owner, name, quartzName ?: name, descriptor, signature, isStatic, names,
-                    nullable, nullableResult)
+            return MethodReader(isStatic, descriptor) { values, names, nullable, nullableResult ->
+                val quartzName = (values["name"] as? String)?.takeIf { it.isNotEmpty() } ?: name
+                val extension = names.firstOrNull()?.let { it.startsWith("\$this\$") || it == "\$receiver" } == true
+                result.methods += ScannedMethod(owner, name, quartzName, descriptor, signature, isStatic, names,
+                    nullable, nullableResult, values["property"] == true, values["method"] == true || extension)
             }
         }
     }
 
-    private class NameVisitor(private val done: (String?) -> Unit) : AnnotationVisitor(Opcodes.ASM9) {
-        private var name: String? = null
+    private class ValuesVisitor(private val done: (Map<String, Any>) -> Unit) : AnnotationVisitor(Opcodes.ASM9) {
+        private val values = mutableMapOf<String, Any>()
 
         override fun visit(key: String, value: Any) {
-            if (key == "name" && value is String && value.isNotEmpty()) name = value
+            values[key] = value
         }
 
-        override fun visitEnd() = done(name)
+        override fun visitEnd() = done(values)
     }
 
     private class MethodReader(
-        private val isStatic: Boolean,
+        isStatic: Boolean,
         descriptor: String,
-        private val done: (String?, List<String>, Set<Int>, Boolean) -> Unit,
+        private val done: (Map<String, Any>, List<String>, Set<Int>, Boolean) -> Unit,
     ) : MethodVisitor(Opcodes.ASM9) {
         private val types = org.objectweb.asm.Type.getArgumentTypes(descriptor)
-        private var annotated = false
-        private var quartzName: String? = null
+        private var values: Map<String, Any>? = null
         private var nullableResult = false
         private val nullable = mutableSetOf<Int>()
         private val parameterNames = arrayOfNulls<String>(types.size)
@@ -123,8 +139,7 @@ internal object HostScanner {
         override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
             if (isNullable(descriptor)) nullableResult = true
             if (descriptor != FUNCTION) return null
-            annotated = true
-            return NameVisitor { quartzName = it }
+            return ValuesVisitor { values = it }
         }
 
         override fun visitParameterAnnotation(parameter: Int, descriptor: String, visible: Boolean): AnnotationVisitor? {
@@ -143,9 +158,104 @@ internal object HostScanner {
         }
 
         override fun visitEnd() {
-            if (annotated) {
-                done(quartzName, parameterNames.mapIndexed { i, n -> n ?: "arg$i" }, nullable, nullableResult)
+            values?.let { done(it, parameterNames.mapIndexed { i, n -> n ?: "arg$i" }, nullable, nullableResult) }
+        }
+    }
+}
+
+/** A class the host API names as a value type: a record, a Kotlin data class, an enum or a sealed type. */
+internal data class ClassShape(
+    val name: String,
+    val kind: Kind,
+    /** Components of a record or data class, in order, with their nullability. */
+    val components: List<Component>,
+    /** Constants of an enum, or permitted subclasses of a sealed type. */
+    val cases: List<String>,
+) {
+    enum class Kind { RECORD, DATA, ENUM, SEALED, OBJECT, OTHER }
+
+    data class Component(val name: String, val type: JvmType, val nullable: Boolean)
+}
+
+/** Class files by binary name, read only when the host interface needs one. */
+internal class ClassIndex {
+    private val bytes = HashMap<String, () -> ByteArray>()
+    private val shapes = HashMap<String, ClassShape?>()
+
+    fun add(bytes: ByteArray, supplier: () -> ByteArray) {
+        this.bytes[ClassReader(bytes).className.replace('/', '.')] = supplier
+    }
+
+    fun add(name: String, data: ByteArray) {
+        bytes[name] = { data }
+    }
+
+    fun shape(name: String): ClassShape? = shapes.getOrPut(name) { bytes[name]?.let { read(name, it()) } }
+
+    private fun read(name: String, data: ByteArray): ClassShape {
+        val reader = ShapeReader()
+        ClassReader(data).accept(reader, ClassReader.SKIP_CODE or ClassReader.SKIP_FRAMES)
+        return reader.shape(name)
+    }
+
+    private class ShapeReader : ClassVisitor(Opcodes.ASM9) {
+        private var access = 0
+        private var superName: String? = null
+        private val recordComponents = mutableListOf<ClassShape.Component>()
+        private val fields = mutableListOf<ClassShape.Component>()
+        private val enumConstants = mutableListOf<String>()
+        private val permitted = mutableListOf<String>()
+        private val componentMethods = mutableSetOf<String>()
+        private var hasInstanceField = false
+
+        override fun visit(v: Int, access: Int, name: String, sig: String?, superName: String?, ifs: Array<String>?) {
+            this.access = access
+            this.superName = superName
+        }
+
+        override fun visitRecordComponent(name: String, descriptor: String, signature: String?) =
+            null.also { recordComponents += ClassShape.Component(name, type(signature ?: descriptor), false) }
+
+        override fun visitPermittedSubclass(permittedSubclass: String) {
+            permitted += permittedSubclass.replace('/', '.')
+        }
+
+        override fun visitField(access: Int, name: String, descriptor: String, signature: String?, value: Any?): FieldVisitor? {
+            if (access and Opcodes.ACC_ENUM != 0) enumConstants += name
+            if (access and Opcodes.ACC_STATIC != 0) {
+                if (name == "INSTANCE") hasInstanceField = true
+                return null
+            }
+            val index = fields.size
+            fields += ClassShape.Component(name, type(signature ?: descriptor), false)
+            return object : FieldVisitor(Opcodes.ASM9) {
+                override fun visitAnnotation(d: String, visible: Boolean): AnnotationVisitor? {
+                    if (HostScanner.isNullable(d)) fields[index] = fields[index].copy(nullable = true)
+                    return null
+                }
             }
         }
+
+        override fun visitMethod(access: Int, name: String, d: String, s: String?, e: Array<String>?): MethodVisitor? {
+            if (name.startsWith("component") && d.startsWith("()")) componentMethods += name
+            return null
+        }
+
+        fun shape(name: String): ClassShape {
+            val simple = name.substringAfterLast('.').substringAfterLast('$')
+            val withNullability = recordComponents.map { c -> fields.firstOrNull { it.name == c.name }?.let { c.copy(nullable = it.nullable) } ?: c }
+            return when {
+                access and Opcodes.ACC_ENUM != 0 -> ClassShape(simple, ClassShape.Kind.ENUM, emptyList(), enumConstants)
+                superName == "java/lang/Record" -> ClassShape(simple, ClassShape.Kind.RECORD, withNullability, emptyList())
+                permitted.isNotEmpty() -> ClassShape(simple, ClassShape.Kind.SEALED, emptyList(), permitted)
+                componentMethods.isNotEmpty() && fields.size >= componentMethods.size &&
+                    (1..componentMethods.size).all { "component$it" in componentMethods } ->
+                    ClassShape(simple, ClassShape.Kind.DATA, fields.take(componentMethods.size), emptyList())
+                hasInstanceField && fields.isEmpty() -> ClassShape(simple, ClassShape.Kind.OBJECT, emptyList(), emptyList())
+                else -> ClassShape(simple, ClassShape.Kind.OTHER, emptyList(), emptyList())
+            }
+        }
+
+        private fun type(text: String): JvmType = JvmSignature(text).field()
     }
 }

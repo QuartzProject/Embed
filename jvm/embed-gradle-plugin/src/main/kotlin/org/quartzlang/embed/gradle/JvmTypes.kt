@@ -8,7 +8,7 @@ internal sealed interface JvmType {
     data object Unknown : JvmType
 }
 
-/** Reads the parameter and return types of a method from its generic signature, or its descriptor. */
+/** Reads the types of a method, field or record component from its generic signature, or its descriptor. */
 internal class JvmSignature(private val text: String) {
     private var at = 0
 
@@ -24,6 +24,9 @@ internal class JvmSignature(private val text: String) {
         expect(')')
         return params to type()
     }
+
+    /** The type of a field or record component. */
+    fun field(): JvmType = type()
 
     private fun type(): JvmType = when (val c = next()) {
         'L' -> reference()

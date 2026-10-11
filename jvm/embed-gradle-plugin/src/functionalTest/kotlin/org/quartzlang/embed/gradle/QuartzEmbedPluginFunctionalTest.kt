@@ -26,15 +26,21 @@ class QuartzEmbedPluginFunctionalTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileQuartz")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":test")?.outcome)
         val qzi = project.resolve("build/generated/quartz/main/host/host.qzi").readText()
-        assertContains(qzi, "fn nickname(player: Player) -> str?")
-        assertContains(qzi, "impl Player {\n    fn level(self) -> i32\n    fn name(self) -> str\n}")
+        assertContains(qzi, "fn nickname(player: Player?) -> str?")
+        assertContains(qzi, "struct Badge {\n    title: str\n    level: i32\n    owner: Player\n}")
+        assertContains(qzi, "enum Rank {\n    ROOKIE\n    VETERAN\n}")
+        assertContains(qzi, "/// Somebody playing.\n@handle\nstruct Player {}")
+        assertContains(qzi, "    /// The name shown in chat.\n    @property\n    fn name(self) -> str\n")
+        assertContains(qzi, "    /// How far the player has come.\n    fn rank(self) -> Rank\n")
         ZipFile(project.resolve("build/libs/greeter.jar")).use { jar ->
             assertNotNull(jar.getEntry(EmbedLayout.binaryPath("greeter")))
             assertNotNull(jar.getEntry("com/example/quartz/GreeterQuartz.class"))
             val metadata = jar.getInputStream(jar.getEntry(EmbedLayout.metadataPath("greeter"))).readAllBytes()
                 .toString(Charsets.UTF_8)
-            assertContains(metadata, "kits=terminal")
+            assertContains(metadata, "kits=terminal\n")
             assertContains(metadata, "bind.Player.level=HANDLE com.example.Player level ()I")
+            assertContains(metadata, "bind.Player.rank=STATIC com.example.HostKt rank")
+            assertContains(metadata, "attribute.0.name=command")
         }
     }
 
@@ -77,15 +83,21 @@ class QuartzEmbedPluginFunctionalTest {
     }
 
     @Test
-    fun `turns warnings into errors when asked`() {
+    fun `sets warning levels for every rule and for one`() {
         val project = fixture("greeter")
         project.resolve("src/main/quartz/dead.qz").writeText("fn dead() -> int {\n    return 1\n    let x = 2\n}\n")
         val warned = build(project, "compileQuartz")
         assertContains(warned.output, "dead.qz:3:5: warning: unreachable code")
+        assertContains(warned.output, "[unreachable-code]")
 
-        project.resolve("build.gradle.kts").appendText("\nquartz.warnings = org.quartzlang.embed.gradle.QuartzSeverity.ERROR\n")
+        val script = project.resolve("build.gradle.kts")
+        script.appendText("\nquartz.rule(\"unreachable-code\", org.quartzlang.embed.gradle.QuartzSeverity.IGNORE)\n")
+        assertTrue("unreachable" !in build(project, "compileQuartz").output)
+
+        script.appendText("\nquartz.warnings = org.quartzlang.embed.gradle.QuartzSeverity.ERROR\n")
         val result = runner(project, "compileQuartz").buildAndFail()
-        assertContains(result.output, "Quartz warnings are errors in this build:")
+        assertContains(result.output, "Quartz compilation failed:")
+        assertContains(result.output, ": error: ")
     }
 
     @Test
@@ -93,12 +105,12 @@ class QuartzEmbedPluginFunctionalTest {
         val project = fixture("greeter")
         project.resolve("src/main/kotlin/com/example/Bad.kt").writeText(
             "package com.example\n\nimport org.quartzlang.embed.api.QuartzFunction\n\n" +
-                "@QuartzFunction\nfun lookup(table: Map<String, Int>): Int = table.size\n"
+                "@QuartzFunction\nfun lookup(file: java.io.File): Int = 0\n"
         )
 
         val result = runner(project, "compileQuartz").buildAndFail()
 
-        assertContains(result.output, "com.example.BadKt.lookup: parameter 'table' is a java.util.Map")
+        assertContains(result.output, "com.example.BadKt.lookup: parameter 'file' is a java.io.File")
     }
 
     @Test

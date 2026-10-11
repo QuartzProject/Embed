@@ -1,9 +1,30 @@
 import org.quartzlang.embed.terminal.println
 
+state Visits {
+    byName: Map<str, int>
+}
+
+struct Spot {
+    world: str
+    x: float
+    owner: Player?
+}
+
+enum Mood {
+    Calm
+    Loud(int)
+}
+
 pub fn greet(player: Player, times: int) -> str {
-    broadcast("greeting {player.name()}")
+    broadcast("greeting {player.name}")
     let title = nickname(player) ?? "newcomer"
-    return shout("hello {player.name()} the {title} x{times}")
+    return shout("hello {player.name} the {title} x{times}")
+}
+
+pub fn visit(visits: Visits, player: Player) -> int {
+    let count = (visits.byName.get(player.name) ?? 0) + 1
+    visits.byName[player.name] = count
+    return count
 }
 
 pub fn levels(players: [Player]) -> [i32] {
@@ -14,14 +35,33 @@ pub fn levels(players: [Player]) -> [i32] {
     return out
 }
 
-pub fn best(players: [Player]) -> Player {
-    var top = players[0]
-    for p in players {
-        if p.level() > top.level() {
-            top = p
-        }
+pub fn find(players: [Player], name: str) -> Player? {
+    return players.find((p) => p.name == name)
+}
+
+pub fn spot(world: str, owner: Player?) -> Spot {
+    return Spot(world, 1.5, owner)
+}
+
+pub fn mood(level: int) -> Mood {
+    return if level > 5 {
+        Mood.Loud(level)
+    } else {
+        Mood.Calm
     }
-    return top
+}
+
+pub fn award(player: Player) -> Badge {
+    return badge(player)
+}
+
+pub fn ranked(player: Player) -> Rank {
+    return player.rank()
+}
+
+@command("greet", perm = "example.greet", min = 1)
+pub fn greetCommand(visits: Visits, player: Player, args: [str]) -> str {
+    return "{player.name} {visit(visits, player)} {args.len()}"
 }
 
 fn main() {

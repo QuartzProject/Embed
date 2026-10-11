@@ -15,7 +15,6 @@ kotlin {
 
 quartz {
     addRuntimeDependency = false
-    kits("terminal")
 }
 
 dependencies {
