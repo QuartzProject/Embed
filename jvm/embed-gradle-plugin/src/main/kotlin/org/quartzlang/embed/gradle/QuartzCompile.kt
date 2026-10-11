@@ -44,16 +44,19 @@ abstract class QuartzCompile : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val hostInterface: DirectoryProperty
 
-    /** Kits the build makes available, by name. */
+    /** Kits whose interfaces the modules compile against, by name. */
     @get:Input
     abstract val kits: SetProperty<String>
 
-    /** The `.qzi` text of every kit the plugin knows. */
+    /** The `.qzi` text of every kit the plugin knows that has one. */
     @get:Input
     abstract val kitInterfaces: MapProperty<String, String>
 
     @get:Input
     abstract val warnings: Property<QuartzSeverity>
+
+    @get:Input
+    abstract val rules: MapProperty<String, QuartzSeverity>
 
     @get:Input
     abstract val keepLines: Property<Boolean>
@@ -68,7 +71,7 @@ abstract class QuartzCompile : DefaultTask() {
     @get:Input
     abstract val facadePackage: Property<String>
 
-    /** A JVM of version 22 or newer, which has the foreign function API the bindings need. */
+    /** A JVM of version 22 or newer, which has the foreign function API. */
     @get:Nested
     abstract val launcher: Property<JavaLauncher>
 
@@ -97,11 +100,14 @@ abstract class QuartzCompile : DefaultTask() {
         val out = destinationDirectory.get().asFile
         val facades = facadeDirectory.get().asFile
         val reports = reportDirectory.get().asFile
-        val files = collect()
-        val modules = QuartzModules.group(files, defaultModule.get())
+        val modules = QuartzModules.group(collect(), defaultModule.get())
         val ids = modules.map { it.id }
         ids.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.firstOrNull()?.let {
             throw GradleException("Two Quartz modules are called '$it'; give each package.toml its own name")
+        }
+        val unknown = kits.get() - EmbedLayout.KIT_NAMES.toSet()
+        if (unknown.isNotEmpty()) {
+            throw GradleException("Unknown Quartz kits $unknown; the kits are ${EmbedLayout.KIT_NAMES}")
         }
         val outdated = outdated(changes, modules)
         if (!changes.isIncremental) {
@@ -112,6 +118,8 @@ abstract class QuartzCompile : DefaultTask() {
         val host = hostInterface.get().asFile
         val interfaces = mutableMapOf<String, String>()
         host.resolve(QuartzHostInterface.INTERFACE).takeIf { it.isFile }?.let { interfaces["<host>.qzi"] = it.readText() }
+        kitInterfaces.get().filterKeys { it in kits.get() }.forEach { (kit, text) -> interfaces["<kit $kit>.qzi"] = text }
+        val levels = listOf("*=" + warnings.get().level) + rules.get().map { (rule, s) -> "$rule=${s.level}" }
         val queue = workers.processIsolation { spec ->
             spec.forkOptions { fork ->
                 fork.executable = launcher.get().executablePath.asFile.absolutePath
@@ -121,23 +129,14 @@ abstract class QuartzCompile : DefaultTask() {
         }
         val paths = mutableMapOf<String, Map<String, String>>()
         for (module in modules.filter { it.id in outdated }) {
-            val texts = module.files.associate { it.first to it.second.readText() }
-            val used = texts.values.flatMap { QuartzSources.kitsUsed(it) }.toSet()
-            val unknown = used - kitInterfaces.get().keys
-            if (unknown.isNotEmpty()) {
-                throw GradleException("Quartz module ${module.id} names unknown kits $unknown; the kits are " +
-                    kitInterfaces.get().keys)
-            }
-            val granted = used intersect kits.get()
-            val moduleInterfaces = interfaces + granted.associate { "<kit $it>.qzi" to kitInterfaces.get().getValue(it) }
             paths[module.id] = module.files.associate { it.first to it.second.path }
             queue.submit(CompileWorker::class.java) { p ->
                 p.module.set(module.id)
                 p.sources.set(module.files.map { it.second.path })
                 p.sourceNames.set(module.files.map { it.first })
                 module.manifest?.let { p.manifest.set(it) }
-                p.interfaces.set(moduleInterfaces)
-                p.kits.set(granted)
+                p.interfaces.set(interfaces)
+                p.levels.set(levels)
                 p.bindings.set(host.resolve(QuartzHostInterface.BINDINGS))
                 p.handles.set(host.resolve(QuartzHostInterface.HANDLES))
                 p.keepLines.set(keepLines)
@@ -146,7 +145,7 @@ abstract class QuartzCompile : DefaultTask() {
                 p.generateFacade.set(generateFacade)
                 p.destinationDirectory.set(out)
                 p.facadeDirectory.set(facades)
-                p.report.set(reports.resolve("${module.id}.txt"))
+                p.report.set(reports.resolve("${module.id}.properties"))
             }
         }
         queue.await()
@@ -202,30 +201,19 @@ abstract class QuartzCompile : DefaultTask() {
 
     private fun report(paths: Map<String, Map<String, String>>, reports: File) {
         val failures = mutableListOf<String>()
-        val warned = mutableListOf<String>()
         for ((id, names) in paths) {
-            val text = reports.resolve("$id.txt").readText()
-            val ok = text.startsWith("ok\n")
-            val lines = text.substringAfter('\n').lines()
-            lines.filter { it.startsWith("facade: ") }.forEach { logger.warn("w: Quartz module {}: {}", id, it) }
-            val diagnostics = Diagnostic.parse(lines.filterNot { it.startsWith("facade: ") }.joinToString("\n"))
-            val rendered = diagnostics.map { it.render(names) }
-            if (!ok) {
-                failures += rendered.filter { !it.contains(": warning: ") || warnings.get() == QuartzSeverity.ERROR }
+            val report = CompileReport.read(reports.resolve("$id.properties"))
+            report.notes.forEach { logger.warn("w: Quartz module {}: {}", id, it) }
+            if (!report.ok) {
+                failures += report.diagnostics.filter { it.severity == "error" }.map { it.render(names) }
                     .ifEmpty { listOf("module $id: compilation failed") }
-            } else {
-                warned += diagnostics.filter { it.severity == "warning" }.map { it.render(names) }
+            }
+            report.diagnostics.filter { report.ok || it.severity != "error" }.forEach {
+                logger.warn("w: {}", it.render(names))
             }
         }
         if (failures.isNotEmpty()) {
             throw GradleException((listOf("Quartz compilation failed:") + failures).joinToString("\n"))
-        }
-        when (warnings.get()) {
-            QuartzSeverity.ERROR -> if (warned.isNotEmpty()) {
-                throw GradleException((listOf("Quartz warnings are errors in this build:") + warned).joinToString("\n"))
-            }
-            QuartzSeverity.WARN -> warned.forEach { logger.warn("w: {}", it) }
-            QuartzSeverity.IGNORE -> Unit
         }
     }
 }

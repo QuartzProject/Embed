@@ -19,6 +19,7 @@ import org.quartzlang.embed.api.EmbedLayout
 class QuartzEmbedPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val extension = project.extensions.create("quartz", QuartzExtension::class.java)
+        extension.kits.convention(EmbedLayout.KIT_NAMES)
         extension.warnings.convention(QuartzSeverity.WARN)
         extension.keepLines.convention(true)
         extension.hostPackage.convention("")
@@ -59,6 +60,13 @@ class QuartzEmbedPlugin : Plugin<Project> {
             })
             task.handles.set(extension.handles)
             task.hostPackage.set(extension.hostPackage)
+            task.sources.from(extension.hostSources)
+            task.sources.from(project.provider {
+                if (!extension.hostSources.isEmpty) return@provider emptyList<java.io.File>()
+                val build = project.layout.buildDirectory.get().asFile
+                val kotlin = sourceSet.extensions.findByName("kotlin") as? SourceDirectorySet
+                (sourceSet.java.srcDirs + (kotlin?.srcDirs ?: emptySet())).filter { !it.startsWith(build) }
+            })
             task.destinationDirectory.set(generated.map { it.dir("host") })
         }
 
@@ -70,6 +78,7 @@ class QuartzEmbedPlugin : Plugin<Project> {
             task.kits.set(extension.kits)
             task.kitInterfaces.set(project.provider { kitInterfaces() })
             task.warnings.set(extension.warnings)
+            task.rules.set(extension.rules)
             task.keepLines.set(extension.keepLines)
             task.defaultModule.set(extension.moduleName.map {
                 if (sourceSet.name == SourceSet.MAIN_SOURCE_SET_NAME) it else "$it-${sourceSet.name}"
@@ -104,11 +113,10 @@ class QuartzEmbedPlugin : Plugin<Project> {
         }
     }
 
-    private fun kitInterfaces(): Map<String, String> = EmbedLayout.KIT_NAMES.associateWith { name ->
-        val path = EmbedLayout.kitInterfacePath(name)
-        val stream = EmbedLayout::class.java.classLoader.getResourceAsStream(path) ?: error("the plugin carries no $path")
-        stream.use { it.readBytes().toString(Charsets.UTF_8) }
-    }
+    private fun kitInterfaces(): Map<String, String> = EmbedLayout.KIT_NAMES.mapNotNull { name ->
+        val stream = EmbedLayout::class.java.classLoader.getResourceAsStream(EmbedLayout.kitInterfacePath(name))
+        stream?.use { name to it.readBytes().toString(Charsets.UTF_8) }
+    }.toMap()
 
     private fun addRuntimeDependency(project: Project, extension: QuartzExtension) {
         val dependency = project.provider {

@@ -1,68 +1,79 @@
 package org.quartzlang.embed.gradle
 
-import org.quartzlang.jvm.Kind
-import org.quartzlang.jvm.Program
-import org.quartzlang.jvm.Type
-
-/** Java source of the typed facade over one module: a method per `pub fn` whose types cross the bindings. */
+/** Java source of the typed facade over one module: a method per `pub fn`, read from the compiled program. */
 internal object FacadeWriter {
-    private val keywords = setOf(
-        "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue",
-        "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "goto", "if",
-        "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "package", "private",
-        "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
-        "throw", "throws", "transient", "try", "void", "volatile", "while", "var", "record", "yield", "module",
-    )
+    private val reservedMethods = setOf("module", "open", "close", "runMain", "MODULE")
 
     /** The source, and a line per function left out with the reason. */
     fun write(
-        program: Program,
+        program: ProgramInfo,
         module: String,
         packageName: String,
         className: String,
-        functions: List<PublicFunction>,
         handles: Map<String, String>,
     ): Pair<String, List<String>> {
         val skipped = mutableListOf<String>()
+        val types = FacadeTypes(program, handles, setOf(className))
         val fields = StringBuilder()
         val init = StringBuilder()
+        val tokens = StringBuilder()
         val methods = StringBuilder()
-        val seen = mutableSetOf<String>()
-        for (f in functions.sortedBy { it.name }) {
-            val export = program.find(f.name).orElse(null) ?: continue
-            if (!seen.add(f.name)) continue
-            val sig = export.signature()
-            if (sig.arity() != f.params.size) {
-                skipped += "${f.name}: its parameters could not be read from the source"
-                continue
-            }
-            val params = f.params.mapIndexed { i, (name, text) -> javaType(sig.params()[i], text, handles, false)?.let {
-                "$it ${safe(name)}" } }
-            val result = javaType(sig.result(), f.result, handles, false)
+        val functions = program.exports.filter { it.isPublic && it.shortName != "main" }.sortedBy { it.name }
+        val shortCounts = functions.groupingBy { it.shortName }.eachCount()
+        for (f in functions) {
+            val params = f.params.map { p -> types.java(p.type)?.let { "$it ${FacadeNames.safe(p.name)}" } }
+            val result = types.java(f.result)
             if (params.any { it == null } || result == null) {
-                skipped += "${f.name}: takes or returns a struct, map, enum, tuple or wide nullable, which the JVM " +
-                    "bindings cannot carry yet"
+                skipped += "${f.name}: takes or returns a function or a type the JVM bindings cannot carry"
                 continue
             }
-            val field = safe(f.name) + "Export"
-            fields.append("    private final Export $field;\n")
-            init.append("        this.$field = module.export(\"${f.name}\");\n")
-            val args = (listOf(field) + f.params.map { safe(it.first) }).joinToString(", ")
-            val call = "module.invoke($args)"
-            if (sig.result().kind() == Kind.LIST) methods.append("    @SuppressWarnings(\"unchecked\")\n")
-            methods.append("    public $result ${safe(f.name)}(${params.joinToString(", ")}) {\n")
-            methods.append(if (result == "void") "        $call;\n" else "        return (${boxed(result)}) $call;\n")
+            val method = methodName(f, shortCounts)
+            val export = method + "Export"
+            fields.append("    private final Export $export;\n")
+            init.append("        this.$export = module.export(\"${f.name}\");\n")
+            val args = (listOf(export) + f.params.map { FacadeNames.safe(it.name) }).joinToString(", ")
+            methods.append("    /** Calls {@code ${f.name}}")
+            if (f.suspend) {
+                methods.append(" as a task; resume it with {@code module().resume}. */\n")
+                methods.append("    public TaskOutcome $method(${params.joinToString(", ")}) {\n")
+                methods.append("        return module.spawn($args);\n    }\n\n")
+                continue
+            }
+            methods.append(". */\n")
+            val target = when {
+                result == "void" -> null
+                types.isGeneric(result) -> {
+                    val token = method.uppercase() + "_RESULT"
+                    tokens.append("    private static final java.lang.reflect.Type $token = new TypeRef<$result>() {}")
+                        .append(".type();\n")
+                    token
+                }
+                else -> "$result.class"
+            }
+            if (target != null && types.isGeneric(result)) methods.append("    @SuppressWarnings(\"unchecked\")\n")
+            methods.append("    public $result $method(${params.joinToString(", ")}) {\n")
+            if (target == null) {
+                methods.append("        module.invoke($args);\n")
+            } else {
+                methods.append("        return (${boxed(result)}) module.invokeAs($target, $args);\n")
+            }
             methods.append("    }\n\n")
         }
-        val hasMain = program.find("main").isPresent
+        val hasMain = program.exports.any { it.shortName == "main" && it.params.isEmpty() }
         val source = buildString {
             if (packageName.isNotEmpty()) append("package $packageName;\n\n")
             append("import org.quartzlang.embed.QuartzEmbed;\n")
             append("import org.quartzlang.embed.QuartzModule;\n")
-            append("import org.quartzlang.jvm.Export;\n\n")
+            append("import org.quartzlang.jvm.Export;\n")
+            append("import org.quartzlang.jvm.TaskOutcome;\n")
+            append("import org.quartzlang.jvm.TypeRef;\n\n")
             append("/** Typed calls into the Quartz module {@code $module}; generated by the build, do not edit. */\n")
+            append("@SuppressWarnings(\"unused\")\n")
             append("public final class $className implements AutoCloseable {\n")
             append("    public static final String MODULE = \"$module\";\n\n")
+            append(types.declarations())
+            append(tokens)
+            if (tokens.isNotEmpty()) append('\n')
             append("    private final QuartzModule module;\n")
             append(fields)
             append("\n    public $className(QuartzModule module) {\n")
@@ -87,7 +98,15 @@ internal object FacadeWriter {
         return source to skipped
     }
 
-    private fun safe(name: String) = if (name in keywords) "${name}_" else name
+    /** The short name, or the last package segment and the name when two packages export the same short name. */
+    private fun methodName(f: FunctionInfo, counts: Map<String, Int>): String {
+        val base = if ((counts[f.shortName] ?: 0) > 1 && f.pkg.isNotEmpty()) {
+            f.pkg.substringAfterLast('.') + f.shortName.replaceFirstChar(Char::uppercaseChar)
+        } else {
+            f.shortName
+        }
+        return FacadeNames.safe(if (base in reservedMethods) "${base}_" else base)
+    }
 
     private fun boxed(type: String) = when (type) {
         "boolean" -> "Boolean"
@@ -98,27 +117,5 @@ internal object FacadeWriter {
         "float" -> "Float"
         "double" -> "Double"
         else -> type
-    }
-
-    private fun javaType(type: Type, text: String?, handles: Map<String, String>, box: Boolean): String? {
-        fun pick(primitive: String, wrapper: String) = if (box) wrapper else primitive
-        return when (type.kind()) {
-            Kind.VOID -> "void"
-            Kind.BOOL -> pick("boolean", "Boolean")
-            Kind.I8 -> pick("byte", "Byte")
-            Kind.I16 -> pick("short", "Short")
-            Kind.I32, Kind.U8, Kind.U16, Kind.CHAR -> pick("int", "Integer")
-            Kind.I64, Kind.U32, Kind.U64 -> pick("long", "Long")
-            Kind.F32 -> pick("float", "Float")
-            Kind.F64 -> pick("double", "Double")
-            Kind.STR -> "String"
-            Kind.BYTES -> "byte[]"
-            Kind.HANDLE -> text?.removeSuffix("?")?.let { handles[it] }?.replace('$', '.') ?: "Object"
-            Kind.LIST -> javaType(type.element(), text?.removePrefix("[")?.removeSuffix("?")?.removeSuffix("]"),
-                handles, true)?.let { "java.util.List<$it>" }
-            Kind.NULLABLE -> if (type.isNullableReference()) javaType(type.element(), text?.removeSuffix("?"),
-                handles, true) else null
-            else -> null
-        }
     }
 }

@@ -1,6 +1,6 @@
 package org.quartzlang.embed.gradle
 
-/** What the build does with a compiler warning. */
+/** What the build does with a compiler warning, for every rule or for one. */
 enum class QuartzSeverity {
     /** Drop it. */
     IGNORE,
@@ -9,5 +9,13 @@ enum class QuartzSeverity {
     WARN,
 
     /** Fail the build. */
-    ERROR,
+    ERROR;
+
+    /** The level qz_compile_with takes. */
+    internal val level: String
+        get() = when (this) {
+            IGNORE -> "ignore"
+            WARN -> "warning"
+            ERROR -> "error"
+        }
 }

@@ -1,5 +1,6 @@
 package org.quartzlang.embed.gradle
 
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
@@ -7,11 +8,17 @@ import org.gradle.jvm.toolchain.JavaLauncher
 
 /** Settings of the `quartz { }` block. */
 abstract class QuartzExtension {
-    /** Kits Quartz code may import (`fs`, `terminal`, `process`, `http`, `archives`); the application grants them. */
+    /**
+     * Kits whose interfaces the modules compile against (`fs`, `terminal`, `process`, `http`, `archives`); all of them
+     * by default. A module only asks the application for the kits its code calls.
+     */
     abstract val kits: SetProperty<String>
 
     /** What a compiler warning does to the build; [QuartzSeverity.WARN] by default. */
     abstract val warnings: Property<QuartzSeverity>
+
+    /** Levels of single warning rules (`unused-variable`, `discarded-result`...), applied after [warnings]. */
+    abstract val rules: MapProperty<String, QuartzSeverity>
 
     /** Keep source lines in the modules for trap messages; on by default. */
     abstract val keepLines: Property<Boolean>
@@ -21,6 +28,12 @@ abstract class QuartzExtension {
 
     /** Handle types for classes the project cannot annotate, such as a library's `Player`: Quartz name to class. */
     abstract val handles: MapProperty<String, String>
+
+    /**
+     * Java and Kotlin sources of the host API, read for the KDoc and Javadoc the generated interface copies as `///`
+     * comments; the source set's own sources by default.
+     */
+    abstract val hostSources: ConfigurableFileCollection
 
     /**
      * Scan the source set's own classes for `@QuartzFunction`, besides its classpath. Then the facade compiles after
@@ -46,8 +59,14 @@ abstract class QuartzExtension {
     /** The JVM that runs the compiler, 22 or newer; the toolchain's Java 25 by default. */
     abstract val compilerLauncher: Property<JavaLauncher>
 
+    /** Compiles against only these kits. */
     fun kits(vararg names: String) {
-        kits.addAll(*names)
+        kits.set(names.toSet())
+    }
+
+    /** Sets the level of one warning rule. */
+    fun rule(name: String, severity: QuartzSeverity) {
+        rules.put(name, severity)
     }
 
     fun handle(quartzName: String, className: String) {
