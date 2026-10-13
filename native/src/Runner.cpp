@@ -19,7 +19,7 @@ bool trampoline(qz_call* call, const qz_slot* args, qz_slot* result, void* user)
 }
 
 const KitEntry* find(std::string_view name) {
-    for (auto kit : {terminalKit(), fsKit(), processKit()}) {
+    for (auto kit : {terminalKit(), fsKit(), processKit(), httpKit(), archivesKit()}) {
         for (const KitEntry& e : kit) {
             if (e.name == name) {
                 return &e;
@@ -43,7 +43,27 @@ struct Owned {
     }
 };
 
+void grant(Host& host, const std::filesystem::path& p) {
+    std::error_code ec;
+    std::filesystem::path absolute = std::filesystem::absolute(p, ec).lexically_normal();
+    if (ec) {
+        return;
+    }
+    host.roots.push_back(absolute);
+    host.realRoots.push_back(std::filesystem::weakly_canonical(absolute, ec));
+}
+
 } // namespace
+
+std::vector<std::filesystem::path> argumentPaths(std::span<const std::string> args) {
+    std::vector<std::filesystem::path> out;
+    for (const std::string& arg : args) {
+        if (!arg.empty() && arg[0] != '-' && arg.find('\0') == std::string::npos) {
+            out.emplace_back(arg);
+        }
+    }
+    return out;
+}
 
 int run(std::span<const std::uint8_t> module, const Grants& grants, std::string_view entry) {
     Owned owned;
@@ -57,27 +77,25 @@ int run(std::span<const std::uint8_t> module, const Grants& grants, std::string_
     Host host;
     host.grants = &grants;
     host.program = owned.program;
-    std::error_code ec;
-    host.realRoot = std::filesystem::weakly_canonical(grants.root, ec);
+    grant(host, grants.root);
+    for (const auto& p : grants.extra) {
+        grant(host, p);
+    }
     qz_limits limits{grants.memoryBytes, grants.fuelPerCall, 0, 0};
     owned.sandbox = qz_sandbox_new(owned.program, &limits);
     std::vector<std::unique_ptr<Binding>> bindings;
     std::string missing;
     for (std::uint32_t i = 0; i < qz_program_import_count(owned.program); ++i) {
-        if (qz_program_import_is_native(owned.program, i)) {
-            continue;
-        }
         const char* name = qz_program_import_name(owned.program, i);
-        const KitEntry* kit = find(name);
-        if (kit == nullptr) {
+        if (const KitEntry* kit = find(name)) {
+            bindings.push_back(std::make_unique<Binding>(&host, kit->fn, qz_program_import_result_type(owned.program, i)));
+            qz_sandbox_bind_direct(owned.sandbox, name, trampoline, bindings.back().get());
+        } else if (!qz_program_import_is_native(owned.program, i) && qz_program_import_is_required(owned.program, i)) {
             missing += missing.empty() ? name : std::string(", ") + name;
-            continue;
         }
-        bindings.push_back(std::make_unique<Binding>(&host, kit->fn, qz_program_import_result_type(owned.program, i)));
-        qz_sandbox_bind_direct(owned.sandbox, name, trampoline, bindings.back().get());
     }
     if (!missing.empty()) {
-        std::fprintf(stderr, "the module imports host functions this executable does not provide: %s\n",
+        std::fprintf(stderr, "the module calls host functions this executable does not provide: %s\n",
                      missing.c_str());
         return 2;
     }
@@ -122,6 +140,12 @@ qz_slot makeStr(qz_call* call, std::string_view value) {
     return out;
 }
 
+qz_slot makeBytes(qz_call* call, std::string_view value) {
+    qz_slot out{};
+    qz_call_bytes_into(call, reinterpret_cast<const std::uint8_t*>(value.data()), value.size(), &out);
+    return out;
+}
+
 bool makeStrList(qz_call* call, std::uint32_t type, const std::vector<std::string>& items, qz_slot* out) {
     qz_sandbox* sandbox = qz_call_sandbox(call);
     qz_slot list = qz_sandbox_list(sandbox, type);
@@ -144,6 +168,37 @@ std::vector<std::string> strList(const qz_slot& list) {
         out.emplace_back(text(element));
     }
     return out;
+}
+
+std::uint32_t okType(const Host& host, std::uint32_t type) {
+    std::uint32_t offset = 0;
+    return qz_type_variant_payload(host.program, type, 0, 0, &offset);
+}
+
+namespace {
+
+bool variant(qz_call* call, const Host& host, std::uint32_t type, std::uint32_t which, qz_slot value) {
+    std::uint32_t slots = 0;
+    qz_type_kind(host.program, type, &slots);
+    std::uint32_t offset = 0;
+    qz_type_variant_payload(host.program, type, which, 0, &offset);
+    qz_slot* out = qz_call_result_slots(call);
+    for (std::uint32_t i = 0; i < slots; ++i) {
+        out[i].u = 0;
+    }
+    out[0].u = which;
+    out[offset] = value;
+    return true;
+}
+
+} // namespace
+
+bool ok(qz_call* call, const Host& host, std::uint32_t type, qz_slot value) {
+    return variant(call, host, type, 0, value);
+}
+
+bool err(qz_call* call, const Host& host, std::uint32_t type, const std::string& message) {
+    return variant(call, host, type, 1, makeStr(call, message));
 }
 
 } // namespace quartz::embed

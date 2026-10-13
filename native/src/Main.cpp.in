@@ -14,5 +14,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         grants.args.emplace_back(argv[i]);
     }
+    if (@QZE_ARGUMENT_PATHS@) {
+        grants.extra = quartz::embed::argumentPaths(grants.args);
+    }
     return quartz::embed::run(std::span(@QZE_SYMBOL@, @QZE_SYMBOL@_size), grants, "@QZE_ENTRY@");
 }
