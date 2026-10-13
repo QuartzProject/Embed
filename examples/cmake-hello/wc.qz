@@ -10,14 +10,17 @@ fn main() {
     }
     var total = 0
     for name in files {
-        if !fs.isFile(name) {
-            eprintln("qwc: {name}: no such file")
-            exit(1)
+        match fs.readText(name) {
+            Ok(text) => {
+                let lines = text.split("\n").len() - 1
+                total += lines
+                println("{lines} {name}")
+            }
+            Err(why) => {
+                eprintln("qwc: {why}")
+                exit(1)
+            }
         }
-        let text = fs.readText(name) ?? ""
-        let lines = text.split("\n").len() - 1
-        total += lines
-        println("{lines} {name}")
     }
     println("{total} total")
 }
