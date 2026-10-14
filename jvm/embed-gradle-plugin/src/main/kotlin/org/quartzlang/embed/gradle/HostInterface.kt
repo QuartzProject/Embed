@@ -72,6 +72,9 @@ internal class HostInterface(
                 }
                 bindings += ModuleMetadata.HostBinding(importName, kind, m.owner, m.name, m.descriptor)
             }
+            for (cls in scan.types) {
+                types.quartz(JvmType.Ref(cls), false, errors, "@QuartzType $cls")
+            }
             if (errors.isNotEmpty()) {
                 throw IllegalArgumentException(errors.joinToString("\n"))
             }

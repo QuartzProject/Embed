@@ -30,12 +30,15 @@ internal data class ScannedMethod(
 internal class ScanResult(val classes: ClassIndex) {
     val methods = mutableListOf<ScannedMethod>()
     val handles = sortedMapOf<String, String>()
+    /** `@QuartzType` classes, declared whether or not a method names them. */
+    val types = sortedSetOf<String>()
 }
 
 /** Reads class files with ASM, without loading them, so a class whose dependencies are missing is still read. */
 internal object HostScanner {
     private const val FUNCTION = "Lorg/quartzlang/embed/api/QuartzFunction;"
     private const val HANDLE = "Lorg/quartzlang/embed/api/QuartzHandle;"
+    private const val TYPE = "Lorg/quartzlang/embed/api/QuartzType;"
     private val marker = "Lorg/quartzlang/embed/api/Quartz".toByteArray()
 
     fun scan(files: Iterable<File>): ScanResult {
@@ -90,6 +93,7 @@ internal object HostScanner {
         }
 
         override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
+            if (descriptor == TYPE) result.types += owner
             if (descriptor != HANDLE) return null
             return ValuesVisitor { values ->
                 val given = (values["name"] as? String)?.takeIf { it.isNotEmpty() }
