@@ -64,6 +64,10 @@ pub fn greetCommand(visits: Visits, player: Player, args: [str]) -> str {
     return "{player.name} {visit(visits, player)} {args.len()}"
 }
 
+pub suspend fn later(n: int) -> int {
+    return n * 2
+}
+
 fn main() {
     println("greeter ready")
 }

@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class GreeterTest {
     @Test
@@ -28,6 +29,7 @@ class GreeterTest {
             assertEquals(GreeterQuartz.Mood.Loud(9L), greeter.mood(9))
             assertEquals(Badge("star", 9, ada), greeter.award(ada))
             assertEquals(Rank.VETERAN, greeter.ranked(ada))
+            assertEquals(8L, greeter.later(4).also { assertTrue(it.done()) }.value().asLong())
 
             val command = greeter.module().functions("command").single()
             assertEquals("greet", command.attribute().value())
