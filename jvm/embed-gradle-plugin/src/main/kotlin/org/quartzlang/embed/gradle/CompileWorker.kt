@@ -11,7 +11,7 @@ import org.quartzlang.embed.api.EmbedLayout
 import org.quartzlang.embed.api.ModuleMetadata
 import org.quartzlang.embed.api.QuartzAttribute
 
-/** Compiles one module in a JVM that has the foreign function API, through libquartz's C interface. */
+/** Compiles one module in a JVM that has the foreign function API, through the JVM bindings. */
 abstract class CompileWorker : WorkAction<CompileWorker.Parameters> {
     interface Parameters : WorkParameters {
         val module: Property<String>
@@ -38,7 +38,7 @@ abstract class CompileWorker : WorkAction<CompileWorker.Parameters> {
         val inputs = p.interfaces.get().map { (name, text) -> name to text } +
             p.sources.get().zip(p.sourceNames.get()).map { (path, name) -> name to java.io.File(path).readText() }
         val levels = p.levels.get().map { it.substringBefore('=') to level(it.substringAfter('=')) }
-        val compiled = NativeQuartz.compile(inputs, p.manifest.orNull?.asFile?.readText(), p.keepLines.get(), levels)
+        val compiled = BindingsCompiler.compile(inputs, p.manifest.orNull?.asFile?.readText(), p.keepLines.get(), levels)
         val program = compiled.program
         if (program == null) {
             CompileReport(false, compiled.diagnostics, emptyList()).write(p.report.get().asFile)
