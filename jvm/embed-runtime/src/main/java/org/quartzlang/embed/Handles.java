@@ -3,12 +3,31 @@ package org.quartzlang.embed;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import org.quartzlang.jvm.HandleMapper;
+import org.quartzlang.jvm.Type;
 
 /** Java objects lent to one module as {@code @handle} values: the same object always gets the same id. */
 public final class Handles {
     private final Map<Object, Long> ids = new IdentityHashMap<>();
     private final Map<Long, Object> objects = new HashMap<>();
     private long next = 1;
+
+    private final HandleMapper mapper = new HandleMapper() {
+        @Override
+        public Object object(long id, Type type) {
+            return get(id);
+        }
+
+        @Override
+        public long id(Object object, Type type) {
+            return idOf(object);
+        }
+    };
+
+    /** This table as the bindings' {@link HandleMapper}, for {@code Values.to} and {@code Values.from}. */
+    public HandleMapper mapper() {
+        return mapper;
+    }
 
     /** The id {@code object} travels as, registering it the first time. */
     public synchronized long idOf(Object object) {
