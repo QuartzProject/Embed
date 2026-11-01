@@ -1,9 +1,8 @@
 #include "Host.hpp"
 
-#include "std/Deflate.hpp"
-
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <span>
 
 namespace quartz::embed {
@@ -30,6 +29,35 @@ void put(std::string& out, std::uint32_t v, int n) {
 }
 
 Bytes bytes(const std::string& s) { return {reinterpret_cast<const std::uint8_t*>(s.data()), s.size()}; }
+
+struct QzFree {
+    void operator()(void* p) const { qz_free(p); }
+};
+
+/// The error of a failed qz_inflate, or nothing with the data in `out`.
+std::optional<std::string> inflate(Bytes in, qz_framing framing, std::size_t max, std::vector<std::uint8_t>& out) {
+    std::size_t length = 0;
+    char* error = nullptr;
+    std::unique_ptr<std::uint8_t, QzFree> data(qz_inflate(in.data(), in.size(), framing, max, &length, &error));
+    std::unique_ptr<char, QzFree> why(error);
+    if (data == nullptr) {
+        return why != nullptr ? std::string(why.get()) : std::string("cannot decompress the data");
+    }
+    out.assign(data.get(), data.get() + length);
+    return std::nullopt;
+}
+
+bool deflate(Bytes in, std::vector<std::uint8_t>& out) {
+    std::size_t length = 0;
+    std::unique_ptr<std::uint8_t, QzFree> data(qz_deflate(in.data(), in.size(), 6, QZ_FRAMING_RAW, &length));
+    if (data == nullptr) {
+        return false;
+    }
+    out.assign(data.get(), data.get() + length);
+    return true;
+}
+
+std::uint32_t crc32(Bytes in) { return qz_crc32(0, in.data(), in.size()); }
 
 struct ZipEntry {
     std::string name;
@@ -153,13 +181,14 @@ bool unzip(qz_call* call, const qz_slot* args, qz_slot*, Host& host, std::uint32
         }
         Bytes raw = bytes(data).subspan(e.dataAt, e.compressed);
         std::vector<std::uint8_t> content;
-        std::string why;
         if (e.method == 0) {
             content.assign(raw.begin(), raw.end());
-        } else if (e.method != 8 || !quartz::stdlib::inflate(raw, content, std::min(e.size, kMaxEntry), why)) {
-            return err(call, host, type, e.name + ": " + (e.method == 8 ? why : "an unsupported compression method"));
+        } else if (e.method != 8) {
+            return err(call, host, type, e.name + ": an unsupported compression method");
+        } else if (auto why = inflate(raw, QZ_FRAMING_RAW, std::min(e.size, kMaxEntry), content)) {
+            return err(call, host, type, e.name + ": " + *why);
         }
-        if (content.size() != e.size || quartz::stdlib::crc32(content) != e.crc) {
+        if (content.size() != e.size || crc32(content) != e.crc) {
             return err(call, host, type, e.name + ": the data does not match its checksum");
         }
         if (!writeFile(out, {reinterpret_cast<const char*>(content.data()), content.size()}, false)) {
@@ -192,8 +221,11 @@ bool zip(qz_call* call, const qz_slot* args, qz_slot*, Host& host, std::uint32_t
             return err(call, host, type, "cannot read " + file.generic_string());
         }
         std::string name = file.lexically_relative(dir).generic_string();
-        std::vector<std::uint8_t> packed = quartz::stdlib::deflate(bytes(content), 6);
-        std::uint32_t crc = quartz::stdlib::crc32(bytes(content));
+        std::vector<std::uint8_t> packed;
+        if (!deflate(bytes(content), packed)) {
+            return err(call, host, type, "out of memory compressing " + name);
+        }
+        std::uint32_t crc = crc32(bytes(content));
         std::uint32_t offset = static_cast<std::uint32_t>(out.size());
         auto header = [&](std::string& to, bool local) {
             put(to, local ? 0x04034b50 : 0x02014b50, 4);
@@ -244,29 +276,9 @@ std::optional<std::string> gunzip(std::string& data) {
     if (b.size() < 18 || b[0] != 0x1f || b[1] != 0x8b) {
         return std::nullopt;
     }
-    std::size_t at = 10;
-    std::uint8_t flags = b[3];
-    if ((flags & 4) != 0) {
-        at += 2 + le(b, at, 2);
-    }
-    for (std::uint8_t bit : {std::uint8_t{8}, std::uint8_t{16}}) {
-        if ((flags & bit) != 0) {
-            while (at < b.size() && b[at] != 0) {
-                ++at;
-            }
-            ++at;
-        }
-    }
-    if ((flags & 2) != 0) {
-        at += 2;
-    }
-    if (at >= b.size()) {
-        return "a damaged gzip header";
-    }
     std::vector<std::uint8_t> out;
-    std::string why;
-    if (!quartz::stdlib::inflate(b.subspan(at), out, kMaxEntry, why)) {
-        return "gzip: " + why;
+    if (auto why = inflate(b, QZ_FRAMING_GZIP, kMaxEntry, out)) {
+        return "gzip: " + *why;
     }
     data.assign(reinterpret_cast<const char*>(out.data()), out.size());
     return std::nullopt;
