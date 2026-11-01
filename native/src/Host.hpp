@@ -46,6 +46,8 @@ std::span<const KitEntry> archivesKit();
 std::string_view text(const qz_slot& slot);
 bool fail(qz_call* call, const std::string& message);
 qz_slot makeStr(qz_call* call, std::string_view value);
+/// A `str` from text the host did not write (program output, headers): ill-formed UTF-8 becomes U+FFFD.
+qz_slot makeStrLossy(qz_call* call, std::string_view value);
 qz_slot makeBytes(qz_call* call, std::string_view value);
 /// A `[str]` in the sandbox, built from `items`, of list type `type`.
 bool makeStrList(qz_call* call, std::uint32_t type, const std::vector<std::string>& items, qz_slot* out);

@@ -140,6 +140,12 @@ qz_slot makeStr(qz_call* call, std::string_view value) {
     return out;
 }
 
+qz_slot makeStrLossy(qz_call* call, std::string_view value) {
+    qz_slot out{};
+    qz_call_str_lossy_into(call, value.data(), value.size(), &out);
+    return out;
+}
+
 qz_slot makeBytes(qz_call* call, std::string_view value) {
     qz_slot out{};
     qz_call_bytes_into(call, reinterpret_cast<const std::uint8_t*>(value.data()), value.size(), &out);
@@ -198,7 +204,7 @@ bool ok(qz_call* call, const Host& host, std::uint32_t type, qz_slot value) {
 }
 
 bool err(qz_call* call, const Host& host, std::uint32_t type, const std::string& message) {
-    return variant(call, host, type, 1, makeStr(call, message));
+    return variant(call, host, type, 1, makeStrLossy(call, message));
 }
 
 } // namespace quartz::embed

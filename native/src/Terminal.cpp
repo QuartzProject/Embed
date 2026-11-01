@@ -44,7 +44,7 @@ bool readLine(qz_call* call, const qz_slot*, qz_slot* result, Host&, std::uint32
     if (!line.empty() && line.back() == '\r') {
         line.pop_back();
     }
-    *result = makeStr(call, line);
+    *result = makeStrLossy(call, line);
     return true;
 }
 

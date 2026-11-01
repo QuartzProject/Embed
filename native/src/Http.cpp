@@ -113,7 +113,7 @@ bool send(qz_call* call, const qz_slot* args, qz_slot*, Host& host, std::uint32_
     qz_sandbox* sandbox = qz_call_sandbox(call);
     qz_slot list = qz_sandbox_list(sandbox, fieldType(host, responseType, 1));
     for (const auto& [name, value] : response.headers) {
-        qz_slot pair[2] = {makeStr(call, name), makeStr(call, value)};
+        qz_slot pair[2] = {makeStrLossy(call, name), makeStrLossy(call, value)};
         if (!qz_list_push(sandbox, list, pair, 2)) {
             return fail(call, "out of memory building the headers");
         }

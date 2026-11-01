@@ -19,7 +19,7 @@ bool env(qz_call* call, const qz_slot* a, qz_slot* result, Host&, std::uint32_t)
         result->p = nullptr;
         return true;
     }
-    *result = makeStr(call, value);
+    *result = makeStrLossy(call, value);
     return true;
 }
 
@@ -74,12 +74,12 @@ bool execCode(qz_call* call, const qz_slot* a, qz_slot* result, Host& host, std:
 
 bool execStdout(qz_call* call, const qz_slot* a, qz_slot* result, Host& host, std::uint32_t) {
     const ExecResult* r = execOf(call, host, a[0]);
-    return r != nullptr && ((*result = makeStr(call, r->out)), true);
+    return r != nullptr && ((*result = makeStrLossy(call, r->out)), true);
 }
 
 bool execStderr(qz_call* call, const qz_slot* a, qz_slot* result, Host& host, std::uint32_t) {
     const ExecResult* r = execOf(call, host, a[0]);
-    return r != nullptr && ((*result = makeStr(call, r->err)), true);
+    return r != nullptr && ((*result = makeStrLossy(call, r->err)), true);
 }
 
 constexpr KitEntry kEntries[] = {
