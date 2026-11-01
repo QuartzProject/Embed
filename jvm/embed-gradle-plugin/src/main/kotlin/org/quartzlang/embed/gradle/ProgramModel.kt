@@ -21,6 +21,8 @@ internal data class FunctionInfo(
     val visibility: Int,
     val suspend: Boolean,
     val attributes: List<AttributeInfo>,
+    /** Its `///` text; empty when it has none. */
+    val doc: String = "",
 ) {
     val shortName: String get() = name.substringAfterLast('.')
     val isPublic: Boolean get() = visibility == 3
@@ -56,6 +58,7 @@ internal data class QuartzType(
     val fields: List<Field>,
     val cases: List<Case>,
     val pointerNullable: Boolean,
+    val doc: String = "",
 ) {
     /** The order of qz_kind in quartz.h. */
     enum class Kind {
@@ -63,9 +66,9 @@ internal data class QuartzType(
         NULLABLE, TUPLE, HANDLE, FUNCTION, OTHER
     }
 
-    data class Field(val name: String, val type: Int)
+    data class Field(val name: String, val type: Int, val doc: String = "")
 
-    data class Case(val name: String, val payload: List<Int>)
+    data class Case(val name: String, val payload: List<Int>, val doc: String = "")
 
     val qualifiedName: String get() = if (pkg.isEmpty()) name else "$pkg.$name"
 

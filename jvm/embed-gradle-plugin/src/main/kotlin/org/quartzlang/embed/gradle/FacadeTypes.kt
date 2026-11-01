@@ -71,22 +71,29 @@ internal class FacadeTypes(
 
     private fun record(name: String, t: QuartzType): String? {
         val components = t.fields.map { f -> (java(f.type) ?: return null) + " " + FacadeNames.safe(f.name) }
-        return "    /** The Quartz struct {@code ${t.name}}. */\n" +
+        val tags = t.fields.filter { Javadoc.text(it.doc).isNotEmpty() }
+            .map { "@param ${FacadeNames.safe(it.name)} ${Javadoc.text(it.doc).replace("\n", " ")}" }
+        return Javadoc.comment("    ", "The Quartz struct {@code ${t.name}}.", t.doc, tags) +
             "    public record $name(${components.joinToString(", ")}) {}\n\n"
     }
 
     private fun enumeration(name: String, t: QuartzType): String? {
         if (t.cases.all { it.payload.isEmpty() }) {
-            return "    /** The Quartz enum {@code ${t.name}}. */\n" +
-                "    public enum $name {\n        ${t.cases.joinToString(",\n        ") { it.name }}\n    }\n\n"
+            val constants = t.cases.joinToString(",\n") { c ->
+                Javadoc.comment("        ", "", c.doc) + "        " + c.name
+            }
+            return Javadoc.comment("    ", "The Quartz enum {@code ${t.name}}.", t.doc) +
+                "    public enum $name {\n$constants\n    }\n\n"
         }
         val variants = t.cases.map { c ->
             val values = c.payload.mapIndexed { i, p ->
                 (java(p) ?: return null) + " " + (if (c.payload.size == 1) "value" else "value$i")
             }
-            "        record ${c.name}(${values.joinToString(", ")}) implements $name {}\n"
+            Javadoc.comment("        ", "", c.doc) +
+                "        record ${c.name}(${values.joinToString(", ")}) implements $name {}\n"
         }
-        return "    /** The Quartz enum {@code ${t.name}}: one record per variant, named like it. */\n" +
+        val lead = "The Quartz enum {@code ${t.name}}: one record per variant, named like it."
+        return Javadoc.comment("    ", lead, t.doc) +
             "    public sealed interface $name {\n${variants.joinToString("")}    }\n\n"
     }
 

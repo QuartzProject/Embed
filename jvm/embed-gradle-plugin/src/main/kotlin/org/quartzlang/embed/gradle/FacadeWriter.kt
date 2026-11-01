@@ -32,14 +32,17 @@ internal object FacadeWriter {
             fields.append("    private final Export $export;\n")
             init.append("        this.$export = module.export(\"${f.name}\");\n")
             val args = (listOf(export) + f.params.map { FacadeNames.safe(it.name) }).joinToString(", ")
-            methods.append("    /** Calls {@code ${f.name}}")
+            val lead = if (f.suspend) {
+                "Calls {@code ${f.name}} as a task; resume it with {@code module().resume}."
+            } else {
+                "Calls {@code ${f.name}}."
+            }
+            methods.append(Javadoc.comment("    ", lead, f.doc))
             if (f.suspend) {
-                methods.append(" as a task; resume it with {@code module().resume}. */\n")
                 methods.append("    public TaskOutcome $method(${params.joinToString(", ")}) {\n")
                 methods.append("        return module.spawn($args);\n    }\n\n")
                 continue
             }
-            methods.append(". */\n")
             val target = when {
                 result == "void" -> null
                 types.isGeneric(result) -> {

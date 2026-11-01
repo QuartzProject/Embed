@@ -29,6 +29,11 @@ class GreeterTest {
             assertEquals(GreeterQuartz.Mood.Loud(9L), greeter.mood(9))
             assertEquals(Badge("star", 9, ada), greeter.award(ada))
             assertEquals(Rank.VETERAN, greeter.ranked(ada))
+            val sum = GreeterQuartz.Expr.Add(GreeterQuartz.Expr.Num(2L), GreeterQuartz.Expr.Num(3L))
+            assertEquals(-5L, greeter.eval(GreeterQuartz.Expr.Neg(sum)))
+            assertEquals(GreeterQuartz.Expr.Neg(sum), greeter.negate(sum))
+            assertEquals(3L, greeter.hops(3))
+            assertEquals(Route.Step("start", Route.Step("x", Route.End)), greeter.reroute(Route.Step("x", Route.End)))
             assertEquals(8L, greeter.later(4).also { assertTrue(it.done()) }.value().asLong())
 
             val command = greeter.module().functions("command").single()

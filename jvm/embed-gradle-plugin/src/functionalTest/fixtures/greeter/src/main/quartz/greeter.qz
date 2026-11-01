@@ -4,17 +4,21 @@ state Visits {
     byName: Map<str, int>
 }
 
+/// Where a player stands.
 struct Spot {
+    /// The world's name.
     world: str
     x: float
     owner: Player?
 }
 
 enum Mood {
+    /// Nothing to report.
     Calm
     Loud(int)
 }
 
+/// Greets a player */ @times times.
 pub fn greet(player: Player, times: int) -> str {
     broadcast("greeting {player.name}")
     let title = nickname(player) ?? "newcomer"
@@ -62,6 +66,40 @@ pub fn ranked(player: Player) -> Rank {
 @command("greet", perm = "example.greet", min = 1)
 pub fn greetCommand(visits: Visits, player: Player, args: [str]) -> str {
     return "{player.name} {visit(visits, player)} {args.len()}"
+}
+
+/// An arithmetic expression.
+enum Expr {
+    Num(int)
+    Add(Expr, Expr)
+    Neg(Expr)
+}
+
+pub fn eval(e: Expr) -> int {
+    return match e {
+        Expr.Num(n) => n,
+        Expr.Add(a, b) => eval(a) + eval(b),
+        Expr.Neg(x) => -eval(x),
+    }
+}
+
+pub fn negate(e: Expr) -> Expr {
+    return Expr.Neg(e)
+}
+
+fn steps(r: Route) -> int {
+    return match r {
+        Route.Step(_, rest) => 1 + steps(rest),
+        Route.End => 0,
+    }
+}
+
+pub fn hops(depth: i32) -> int {
+    return steps(route(depth))
+}
+
+pub fn reroute(r: Route) -> Route {
+    return Route.Step("start", r)
 }
 
 pub suspend fn later(n: int) -> int {

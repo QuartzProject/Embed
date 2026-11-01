@@ -57,6 +57,7 @@ internal object BindingsCompiler {
             visibility = e.visibility().ordinal,
             suspend = e.isSuspend,
             attributes = e.attributes().map { a -> AttributeInfo(a.name(), a.filter()?.name(), a.arguments().map(::arg)) },
+            doc = e.doc(),
         )
 
         private fun arg(a: Attribute.Argument): AttributeArg {
@@ -88,9 +89,10 @@ internal object BindingsCompiler {
                 pkg = t.packageName(),
                 element = type(t.element()),
                 key = if (kind == QuartzType.Kind.MAP) type(t.key()) else 0,
-                fields = t.fields().map { QuartzType.Field(it.name(), type(it.type())) },
-                cases = t.cases().map { c -> QuartzType.Case(c.name(), c.payload().map { type(it.type()) }) },
+                fields = t.fields().map { QuartzType.Field(it.name(), type(it.type()), it.doc()) },
+                cases = t.cases().map { c -> QuartzType.Case(c.name(), c.payload().map { type(it.type()) }, c.doc()) },
                 pointerNullable = t.isPointerNullable,
+                doc = t.doc(),
             )
             return id
         }

@@ -32,6 +32,13 @@ class QuartzEmbedPluginFunctionalTest {
         assertContains(qzi, "/// Somebody playing.\n@handle\nstruct Player {}")
         assertContains(qzi, "    /// The name shown in chat.\n    @property\n    fn name(self) -> str\n")
         assertContains(qzi, "    /// How far the player has come.\n    fn rank(self) -> Rank\n")
+        assertContains(qzi, "enum Route {\n    End\n    Step(str, Route)\n}")
+        val facade = project.resolve("build/generated/quartz/main/facade/com/example/quartz/GreeterQuartz.java")
+            .readText()
+        assertContains(facade, "     * Calls {@code greet}.\n     * <p>\n     * Greets a player *&#47; &#64;times times.\n")
+        assertContains(facade, "     * Where a player stands.\n     *\n     * @param world The world's name.\n")
+        assertContains(facade, "        /** Nothing to report. */\n        record Calm() implements Mood {}")
+        assertContains(facade, "record Add(Expr value0, Expr value1) implements Expr {}")
         ZipFile(project.resolve("build/libs/greeter.jar")).use { jar ->
             assertNotNull(jar.getEntry(EmbedLayout.binaryPath("greeter")))
             assertNotNull(jar.getEntry("com/example/quartz/GreeterQuartz.class"))

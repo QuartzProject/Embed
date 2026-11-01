@@ -18,6 +18,15 @@ data class Badge(val title: String, val level: Int, val owner: Player)
 
 enum class Rank { ROOKIE, VETERAN }
 
+sealed interface Route {
+    data object End : Route
+
+    data class Step(val name: String, val rest: Route) : Route
+}
+
+@QuartzFunction
+fun route(depth: Int): Route = (0 until depth).fold<Int, Route>(Route.End) { r, i -> Route.Step("s$i", r) }
+
 /** How far the player has come. */
 @QuartzFunction
 fun Player.rank(): Rank = if (level() > 5) Rank.VETERAN else Rank.ROOKIE
