@@ -51,11 +51,13 @@ Embed.
 ## Building
 
 ```bash
-./gradlew build -Pquartz.jvm=<Quartz>/bindings/jvm -Pquartz.library=<libquartz>
+./gradlew build -Pquartz.jvm=<Quartz sources>/bindings/jvm -Pquartz.library=<libquartz>
 ```
 
-Needs a JDK 25 and a build of [Quartz](https://github.com/QuartzProject/Quartz). Nothing is published yet: take the
-plugin with `includeBuild` from a checkout of this repository.
+Needs a JDK 25, the sources of [Quartz](https://github.com/QuartzProject/Quartz) and `libquartz` from a
+[Quartz release](https://github.com/QuartzProject/Quartz/releases). The Gradle plugin is not in a public repository
+yet: use it with `includeBuild` from these sources. The CMake module finds an installed Quartz, such as an unpacked
+release, through `CMAKE_PREFIX_PATH`.
 
 ## License
 
